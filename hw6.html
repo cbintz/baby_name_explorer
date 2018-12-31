@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <script src="https://d3js.org/d3.v5.min.js"></script>
+    <script src="https://ajax.googleapis.com/ajax/libs/jquery/3.2.1/jquery.min.js"></script>
+
+
+    <style type="text/css">
+    .horiz{
+        display: flex !important;
+    }
+    .radios{
+        padding-left: 10px;
+    }
+    input[type="radio"] {
+        margin-left: 10px !important;
+        margin-right:8px;
+    }
+
+    #tooltip{
+        position:absolute;
+        width:150px;
+        height:auto;
+        padding:10px;
+        background-color: white;
+        border-radius:10px;
+        box-shadow: 4px 4px 10px rgba(0,0,0,0.4);
+        pointer-events: none;
+    }
+
+    #tooltip p{
+        margin:0;
+        font-family: sans-serif;
+        font-size:12px;
+    }
+    #tooltip.hidden{
+        display:none;
+    }
+
+    .legend{
+        width:55%;
+        margin-right:2%;
+        float: left;
+    }
+    .remove {
+        width:42%;
+        float: left;
+    }
+    </style>
+    <h5> HW6: Holley McShan & Corinne Bintz</h5>
+    <h3>Baby Name Explorer</h3>
+    <hr>
+</head>
+<body>
+    <div class = "horiz">
+        <form class= "horiz">
+            Add a name: <br>
+            <input type="text" name="name" value="" id="newName"><br><br>
+            <input type="button" value="Submit" id="nameSubmit">
+        </form>
+        <br>
+        <form class="horiz radios">
+            <input type="radio" name="gender" value="male" checked> Male<br>
+            <input type="radio" name="gender" value="female"> Female<br>
+            <input type="radio" name="gender" value="both"> Both<br>
+        </form>
+    </div>
+    <svg id="chart"></svg>
+    <div id="tooltip" class="hidden">
+        <p>
+            <b><i>Name:</i></b> <span id="line_name"></span><br />
+            <b><i>Gender:</i></b> <span id="line_gender"></span><br /></b>
+            <b><i>Max name count:</i></b> <span id="line_max"></span><br /></b>
+        </p>
+    </div>
+    <div class="legend">
+        <svg id="key"></svg>
+    </div>
+    <div class="remove">
+        Remove a name: <select id="removeName"></select>
+    </div>
+    <div class="remove">
+        Gender: <select id="removeGen"></select>
+    </div>
+    <div class="remove">
+        <input type="button" value="Remove" id="nameRemove">
+    </div>
+
+    <script>
+
+    const margins = {top:5, bottom:50, left:60, right:5};
+    const width = 840;
+    const height = 550;
+
+    d3.select("#removeName")
+    .property("value", '-')
+    .append("option")
+    .attr("value", '-')
+    .text('-');
+
+    let names = []
+    let added=[]
+    var killName = '-'
+    var killGen = 'Male'
+
+    const url = 'http://www.cs.middlebury.edu/~candrews/classes/cs465-f18/data/names1880-2012.csv'
+    const legend = d3.select("#key")
+    .attr("width", 400)
+    .attr("height", 200)
+    const svg = d3.select("#chart")
+    .attr("width", width + margins.right + margins.left)
+    .attr("height", height + margins.top + margins.bottom);
+    const chart = svg.append("g")
+    .attr("transform", `translate(${margins.left}, ${margins.top})`);
+
+    // nest data by Name then Gender
+    d3.csv(url).then((data)=>{
+        console.log(data)
+        var nestedData = d3.nest()
+        .key(function(d) { return d.Name; })
+        .key(function(d) { return d.Gender; })
+        .map(data);
+
+        console.log(nestedData)
+
+        let dataArray = [];
+        const color = d3.scaleOrdinal(d3.schemeCategory10);
+
+        const maxCount = function(){
+            let biggest = 0;
+            for (let i=0; i < dataArray.length; i++){
+                if(d3.max(dataArray[i], (d)=>+d.Count) > biggest){
+                    biggest = d3.max(dataArray[i], (d)=>+d.Count)
+                }
+            }
+            return biggest
+        }
+
+        const line = d3.line()
+        .x((d) => x_scale(+d.Year))
+        .y((d) => y_scale(+d.Count));
+
+        // update lines using update, enter, exit
+        const update_lines = function(){
+            console.log("data array")
+            console.log(dataArray)
+
+            console.log(dataArray)
+
+            let lines = chart.selectAll(".lines")
+            .data(dataArray, (d)=>(d[0].Name+d[0].Gender));
+            lines.exit().remove();
+
+            let new_lines = lines.enter()
+            .append("path")
+            .data(dataArray)
+            .attr("class", "lines")
+            .attr("d", line)
+            .style("stroke", (d)=> color(d[0].Name + d[0].Gender))
+            .style("stroke-width", "3px")
+            .style("fill", "none");
+
+            lines = lines.merge(new_lines)
+            .attr("class", "lines")
+            .attr("d", line);
+
+            lines.on("mouseover", function(d){
+                d3.select(this).classed("highlighted", true)
+                d3.select("#tooltip").classed("hidden", false)
+                d3.select("#line_name").text(d[0].Name)
+                d3.select("#line_gender").text(d[0].Gender)
+                d3.select("#line_max").text(d3.max(d, (d)=>+d.Count))
+                const coordinates = [d3.event.pageX, d3.event.pageY]
+                const tooltip = d3.select("#tooltip")
+                .style("left", (coordinates[0]+25)+"px")
+                .style("top", (coordinates[1]+25)+"px");
+            });
+
+            lines.on("mouseout", function(d){d3.select(this)
+                .classed("highlighted", false)
+                d3.select("#tooltip")
+                .classed("hidden",true)});
+            }
+
+            // update legend and legend text using update, enter, exit
+            const update_legend = function(){
+                let keys = legend.selectAll(".keys").data(dataArray, (d)=>(d[0].Name+d[0].Gender));
+                let keyText = legend.selectAll(".keyText").data(dataArray, (d)=>(d[0].Name+d[0].Gender));
+
+                keyText.exit().remove();
+                keys.exit().remove();
+
+                let new_keys = keys.enter()
+                let new_key_text = keyText.enter()
+
+                new_keys.append("rect")
+                .data(dataArray)
+                .attr("class", "keys")
+                .attr("x", 10)
+                .attr("y", (d, i) => (30+ (i*20)))
+                .attr("width", 10)
+                .attr("height", 10)
+                .style("stroke", (d)=> color(d[0].Name + d[0].Gender))
+                .style("stroke-width", "3px")
+                .style("fill", (d)=> color(d[0].Name + d[0].Gender));
+
+                new_key_text.append("text")
+                .data(dataArray)
+                .attr("class", "keyText")
+                .attr("x", 25)
+                .attr("y", (d, i) => (40+ (i*20)))
+                .attr("fill", "black")
+                .text((d)=>d[0].Name + ": " + d[0].Gender);
+
+                keys = keys.merge(new_keys)
+                keyText = keyText.merge(new_key_text)
+            }
+
+            // legend title
+            legend.append("text")
+            .attr("x", 10)
+            .attr("y", 15)
+            .attr("fill", "black")
+            .style("font-size", "20px")
+            .text("LEGEND");
+
+            // add a new name/gender entry
+            const addEntry = function(){
+                let name = document.getElementById("newName").value;
+                if (dataArray.length ===10){
+                    alert("Unable to add more than 10 names. Please remove some and try again.")
+                    return
+                }
+                else {
+                    let gen;
+                    let genders = document.getElementsByName('gender');
+                    for(var i = 0; i < 3; i++){
+                        if(genders[i].checked){
+                            gen = genders[i].value;
+                        }
+                    }
+                    if (gen ==='male'){
+                        gen = 'M';
+                    } else if (gen === 'female') {
+                        gen = 'F'
+                    } else {
+                        if (dataArray.length === 9){ //too many
+                            alert("You don't have room for two more names. Delete one and try again. ")
+                            return
+                        } else { //add both
+                            let entryF = nestedData.get(name).get('F');
+                            let entryM = nestedData.get(name).get('M');
+                            if (dataArray.includes(entryF) && (!dataArray.includes(entryM))) {
+                                alert("Name already entered for females: enter name for just males instead.")
+                                return
+                            }
+                            else if (dataArray.includes(entryM) && (!dataArray.includes(entryF))) {
+                                alert("Name already entered for males: enter name for just females instead.")
+                                return
+                            }
+                            else if (dataArray.includes(entryM) && (dataArray.includes(entryF))) {
+                                alert("Name already entered for both males and females.")
+                                return
+                            }
+                            else {
+                                names.push(name)
+                                dataArray.push(entryF);
+                                y_scale.domain([0, maxCount()]);
+                                y_axis.call(d3.axisLeft(y_scale));
+                                update_lines();
+                                dataArray.push(entryM);
+                                y_scale.domain([0, maxCount(dataArray)]);
+                                y_axis.call(d3.axisLeft(y_scale));
+                                update_lines();
+                                return
+                            }
+                        }
+                    }
+                    let entry = nestedData.get(name).get(gen);
+                    if (dataArray.includes(entry)) {
+                        alert("Name of selected sex already entered.")
+                    }
+                    else {
+                        if (!names.includes(name)){
+                            names.push(name)
+                            populateMenu(name)
+                        }
+                        dataArray.push(entry);
+                        y_scale.domain([0, maxCount(dataArray)]);
+                        y_axis.call(d3.axisLeft(y_scale));
+                        update_lines();
+                        update_legend();
+                    }
+                }
+
+            };
+
+            // remove a name/gender entry
+            const killEntry = function(entry){
+                index = dataArray.indexOf(entry);
+                dataArray.splice(index, 1)
+                y_scale.domain([0, maxCount(dataArray)]);
+                y_axis.call(d3.axisLeft(y_scale));
+                update_lines();
+                update_legend();
+                return
+            };
+
+            // populate the name selection menu
+            const populateMenu = function(name) {
+                d3.select("#removeName")
+                .property("value", name)
+                .append("option")
+                .attr("value", name)
+                .text(name);
+            }
+
+            // populate the gender selection menu
+            const populateGenMenu = function() {
+                genders = ['Male', 'Female', 'Both']
+                for (let i=0; i<genders.length; i++) {
+                    if (!added.includes(genders[i])) {
+                        added.push(genders[i])
+                        d3.select("#removeGen")
+                        .append("option")
+                        .attr("value", genders[i])
+                        .text(genders[i]);
+                    }
+                }
+            }
+
+            // event for clicking submit button
+            d3.select("#nameSubmit").on("click", function(d){
+                addEntry();
+                update_legend()
+                populateGenMenu();
+            });
+
+            // event for selecting name to remove
+            d3.select("#removeName").on("change", function(d){
+                killName = this.value;
+            });
+
+            // event for selecting gender of name to remove
+            d3.select("#removeGen").on("change", function(d){
+                killGen = this.value;
+            });
+
+            // event for clicking remove button
+            d3.select("#nameRemove").on("click", function(d){
+                if (killGen == 'Female'){
+                    getGen = 'F'
+                }
+                else {
+                    getGen = 'M'
+                }
+
+                let entry = nestedData.get(killName).get(getGen);
+                if (dataArray.includes(entry)) {
+                    killEntry(entry);
+                }
+                else {
+                    alert("Entry not found: try different name and/or gender")
+                }
+            })
+
+
+            const x_scale = d3.scaleLinear()
+            .range([0,width])
+            .domain([1880, 2012]);
+
+            var xAxis = d3.axisBottom()
+            .scale(x_scale)
+            .tickFormat((d3.format("d")));
+
+            const x_axis = chart.append("g")
+            .attr("transform", `translate(0, ${height})`)
+            .call(xAxis);
+
+            const y_scale = d3.scaleLinear()
+            .range([height, 0])
+            .domain([0, maxCount()]);
+
+            const y_axis = chart.append("g")
+            .call(d3.axisLeft(y_scale));
+
+
+            // add axis labels
+            chart.append("text")
+            .attr("text-anchor", "middle")
+            .attr("transform", `translate(${width/2}, ${height+ 4*margins.bottom/5 })`)
+            .text("Year");
+
+            chart.append("text")
+            .attr("text-anchor", "middle")
+            .attr("transform",`translate(${4*-margins.left/5}, ${height/2})rotate(-90)`)
+            .text("Name Count");
+
+
+        }).catch((err)=>{
+            console.log(err);
+        });
+
+
+        </script>
+    </body>
+    </html>
