@@ -1,5 +1,5 @@
 # baby_name_explorer
-Assignment 6 for Information Visualization (CS465): Interactive baby name explorer allowing comparison of popularity of baby names over time.
+Assignment for Information Visualization (CS465): Interactive baby name explorer allowing comparison of popularity of baby names over time.
 
 -  Created in D3
 -  To launch, either
